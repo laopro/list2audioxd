@@ -2,8 +2,6 @@
 
 A lightweight script to download YouTube and YouTube Music playlists in multiple audio formats, compatible with Linux and Termux.
 
----
-
 ## Quick Start
 
 Download the latest release directly:
