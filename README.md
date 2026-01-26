@@ -9,13 +9,13 @@ A lightweight script to download YouTube and YouTube Music playlists in multiple
 Download the latest release directly:
 
 ```
-curl -L https://github.com/laopro/yt-playlist-audio-downloader/releases/latest/download/yt-playlist-audio-downloader.sh -o yt-playlist-audio-downloader.sh
+curl -L https://github.com/laopro/list2audioxd/releases/download/versions/yt-audio-downloader-linux.termux.sh -o yt-audio-downloader-linux.termux.sh
 chmod +x yt-playlist-audio-downloader.sh
 ```
 
 # Run the script on any Linux system:
 ```
-./yt-playlist-audio-downloader.sh
+./yt-audio-downloader-linux.termux.sh
 ```
 
 Features
