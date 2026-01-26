@@ -2,9 +2,9 @@
 
 A lightweight script to download YouTube and YouTube Music playlists in multiple audio formats, compatible with Linux and Termux.
 
-## Quick Start
+## Quick Start (Only Linux and Termux)
 
-Download the latest release directly:
+Download the latest release directly :
 
 ```
 bash <(curl -sSL https://github.com/laopro/list2audioxd/releases/latest/download/yt-audio-downloader-linux-termux.sh)
