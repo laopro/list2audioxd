@@ -9,7 +9,7 @@ A lightweight script to download YouTube and YouTube Music playlists in multiple
 Download the latest release directly:
 
 ```
-bash <(curl -sSL https://github.com/laopro/list2audioxd/releases/download/versions/yt-audio-downloader-linux-termux.sh)
+bash <(curl -sSL https://github.com/laopro/list2audioxd/releases/latest/download/yt-audio-downloader-linux-termux.sh)
 ```
 
 Features
