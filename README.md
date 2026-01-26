@@ -11,10 +11,6 @@ Download the latest release directly:
 ```
 curl -L https://github.com/laopro/list2audioxd/releases/download/versions/yt-audio-downloader-linux.termux.sh -o yt-audio-downloader-linux.termux.sh
 chmod +x yt-playlist-audio-downloader.sh
-```
-
-# Run the script on any Linux system:
-```
 ./yt-audio-downloader-linux.termux.sh
 ```
 
