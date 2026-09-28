@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Protocol
 from urllib.parse import parse_qs, urlparse
 
-from .profiles import FILENAME_TEMPLATE, Profile
+from .profiles import Profile
 from .state import Archive, PlaylistSession
 
 # ------------------------------- public types ------------------------------
@@ -76,6 +76,36 @@ class _NullHooks:
 
     def on_log(self, message: str) -> None:
         pass
+
+
+class _YDLLogger:
+    """yt-dlp logger adapter: quiet on debug/info, deduped warnings/errors.
+
+    Without this, yt-dlp spams the console/GUI with the same warning dozens of
+    times (e.g. one per entry of a playlist).
+    """
+
+    def __init__(self, hooks: Hooks) -> None:
+        self._hooks = hooks
+        self._seen: set[str] = set()
+
+    def debug(self, message: str) -> None:
+        pass  # yt-dlp progress/verbose chatter: we have our own progress UI
+
+    def info(self, message: str) -> None:
+        pass
+
+    def warning(self, message: str) -> None:
+        self._emit(message)
+
+    def error(self, message: str) -> None:
+        self._emit(message)
+
+    def _emit(self, message: str) -> None:
+        if message in self._seen:
+            return
+        self._seen.add(message)
+        self._hooks.on_log(message)
 
 
 # ------------------------------- cancellation ------------------------------
@@ -140,6 +170,7 @@ class Engine:
         retries: int = 2,
         hooks: Hooks | None = None,
         cancel: CancelToken | None = None,
+        js_runtimes: dict | None = None,
     ) -> None:
         profile.validate()
         self.profile = profile
@@ -149,27 +180,108 @@ class Engine:
         self.retries = max(0, retries)
         self.hooks: Hooks = hooks or _NullHooks()
         self.cancel = cancel or CancelToken()
+        # yt-dlp needs a JS runtime for YouTube (signature solving); detection
+        # lives in deps.find_js_runtime(). None -> let yt-dlp use its default.
+        self.js_runtimes: dict = (
+            js_runtimes if js_runtimes is not None else {"deno": {}}
+        )
         self._current_index = 0
         self._skipped = 0
 
     # ----------------------------- yt-dlp opts -----------------------------
 
     def _ydl_opts(self, *, archive: Archive | None = None, quiet: bool = True) -> dict:
+        fmt = self.profile.format
+        embed_meta = bool(self.profile.embed_metadata)
+        embed_thumb = bool(self.profile.embed_thumbnail)
+
+        # Postprocessors must be built exactly like yt-dlp's CLI does
+        # (yt_dlp/__init__.py get_postprocessors): the CLI-only flags
+        # embedmetadata/embedthumbnail/sponsorblock_remove are NOT accepted as
+        # YoutubeDL params and are silently ignored when passed raw.
+        postprocessors: list[dict] = []
+        if self.profile.sponsorblock:
+            postprocessors.append(
+                {
+                    "key": "SponsorBlock",
+                    "categories": {"sponsor", "selfpromo", "interaction"},
+                    "api": "https://sponsor.ajay.app",
+                    "when": "after_filter",
+                }
+            )
+
+        if fmt in ("flac", "wav"):
+            opts_format = "bestaudio/best"
+            postprocessors.append(
+                {"key": "FFmpegExtractAudio", "preferredcodec": fmt, "preferredquality": "0"}
+            )
+        elif fmt == "opus":
+            opts_format = "bestaudio[acodec=opus]/bestaudio/best"
+            postprocessors.append(
+                {"key": "FFmpegExtractAudio", "preferredcodec": "opus"}
+            )
+        elif fmt == "m4a":
+            opts_format = "bestaudio[ext=m4a]/bestaudio/best"
+            postprocessors.append(
+                {"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}
+            )
+        else:  # mp3
+            opts_format = "bestaudio/best"
+            postprocessors.append(
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": str(self.profile.bitrate).rstrip("Kk"),
+                }
+            )
+
+        if self.profile.sponsorblock:
+            postprocessors.append(
+                {
+                    "key": "ModifyChapters",
+                    "remove_sponsor_segments": {"sponsor", "selfpromo", "interaction"},
+                    "remove_chapters_patterns": set(),
+                    "remove_ranges": set(),
+                    "sponsorblock_chapter_title": "[SponsorBlock]: %(category_names)l",
+                    "force_keyframes": False,
+                }
+            )
+
+        if embed_meta:
+            postprocessors.append(
+                {
+                    "key": "FFmpegMetadata",
+                    "add_chapters": False,
+                    "add_metadata": True,
+                    "add_infojson": False,
+                }
+            )
+        if embed_thumb:
+            postprocessors.append(
+                {"key": "EmbedThumbnail", "already_have_thumbnail": False}
+            )
+
         opts: dict = {
             "quiet": quiet,
             "no_warnings": False,
             "noplaylist": False,
-            "ignoreerrors": True,  # never abort a whole playlist on 1 bad video
+            # per-entry downloads run one video at a time: let errors surface so
+            # failed songs are NOT recorded as successes (a bad run used to add
+            # them to the archive forever). fetch_info overrides this to True.
+            "ignoreerrors": False,
             "retries": 1,  # we do our own retry loop with better reporting
             "fragment_retries": 3,
             "file_access_retries": 3,
             "continuedl": True,
             "windowsfilenames": True,
-            "writethumbnail": bool(self.profile.embed_thumbnail),
-            "embedthumbnail": bool(self.profile.embed_thumbnail),
-            "embedmetadata": bool(self.profile.embed_metadata),
-            "addmetadata": bool(self.profile.embed_metadata),
+            "concurrent_fragment_downloads": 4,
+            "noprogress": True,  # our hooks draw progress; avoid double output
+            "writethumbnail": embed_thumb,  # EmbedThumbnailPP deletes it after use
             "matchfilter": None,
+            "format": opts_format,
+            "postprocessors": postprocessors,
+            "logger": _YDLLogger(self.hooks),
+            "js_runtimes": dict(self.js_runtimes),
         }
 
         if self.ffmpeg_location:
@@ -180,35 +292,6 @@ class Engine:
             opts["proxy"] = self.proxy
         if self.cookies_from_browser:
             opts["cookiesfrombrowser"] = ("chrome",)
-        if self.profile.sponsorblock:
-            opts["sponsorblock_remove"] = ["sponsor", "selfpromo", "interaction"]
-
-        # format selection -------------------------------------------------
-        fmt = self.profile.format
-        if fmt in ("flac", "wav"):
-            opts["format"] = "bestaudio/best"
-            opts["postprocessors"] = [
-                {"key": "FFmpegExtractAudio", "preferredcodec": fmt, "preferredquality": "0"}
-            ]
-        elif fmt == "opus":
-            opts["format"] = "bestaudio[acodec=opus]/bestaudio/best"
-            opts["postprocessors"] = [
-                {"key": "FFmpegExtractAudio", "preferredcodec": "opus"}
-            ]
-        elif fmt == "m4a":
-            opts["format"] = "bestaudio[ext=m4a]/bestaudio/best"
-            opts["postprocessors"] = [
-                {"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}
-            ]
-        else:  # mp3
-            opts["format"] = "bestaudio/best"
-            opts["postprocessors"] = [
-                {
-                    "key": "FFmpegExtractAudio",
-                    "preferredcodec": "mp3",
-                    "preferredquality": str(self.profile.bitrate).rstrip("Kk"),
-                }
-            ]
         return opts
 
     # ------------------------------ fetch info -----------------------------
@@ -219,14 +302,15 @@ class Engine:
 
         self.hooks.on_progress(Progress(phase="fetching", message="Reading playlist..."))
         opts = self._ydl_opts(quiet=True)
-        # metadata-only pass: never touch the disk
+        # metadata-only pass: never touch the disk; tolerate unavailable videos
         opts.update(
             {
                 "extract_flat": True,
                 "skip_download": True,
+                "ignoreerrors": True,
                 "writethumbnail": False,
-                "embedthumbnail": False,
                 "writeinfojson": False,
+                "postprocessors": [],
             }
         )
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -263,7 +347,6 @@ class Engine:
             return report
 
         opts = self._ydl_opts(archive=session.archive)
-        opts["outtmpl"] = str(session.folder / FILENAME_TEMPLATE)
 
         self._current_index = 0
         self._skipped = 0
@@ -338,6 +421,10 @@ class Engine:
                 )
                 continue
 
+            # per-entry filename: we download entries one by one (no playlist
+            # context), so %(playlist_index) would render as "NA"
+            opts["outtmpl"] = str(session.folder / f"{i:03d} - %(title).120s.%(ext)s")
+
             error_msg, attempts = self._download_entry_with_retries(
                 ydl_opts=opts, url=entry_url
             )
@@ -398,13 +485,15 @@ class Engine:
 
     @staticmethod
     def _entry_url(entry: dict) -> str:
+        vid = entry.get("id")
+        ie = (entry.get("ie_key") or entry.get("extractor_key") or "").lower()
+        # full video info dicts also carry a "url", but it can be the raw
+        # stream URL (…/videoplayback) -> prefer the canonical watch URL
+        if vid and ie.startswith("youtube"):
+            return f"https://www.youtube.com/watch?v={vid}"
         if entry.get("url"):
             return str(entry["url"])
-        vid = entry.get("id")
-        ie = (entry.get("ie_key") or entry.get("extractor_key") or "Youtube").lower()
         if vid:
-            if ie.startswith("youtube"):
-                return f"https://www.youtube.com/watch?v={vid}"
             return str(vid)
         return ""
 

@@ -173,7 +173,16 @@ def run_interactive(url: str | None, dest: Path | None, profile: Profile | None)
     except DependencyError as exc:
         print(f"{C.RED}Missing dependency:{C.NC}\n{exc}")
         return 1
+    js_info = info.get("js") or {}
+    js_label = next(iter(js_info), None)
     print(f"{C.GREEN}OK:{C.NC} yt-dlp {info['yt_dlp']}, ffmpeg found")
+    if js_label:
+        print(f"       JavaScript runtime: {js_label}")
+    else:
+        print(
+            f"{C.YELLOW}Warning:{C.NC} no JS runtime (deno/node) found; "
+            "YouTube downloads may fail."
+        )
     self_update_yt_dlp(label=lambda m: print(f"  {m}"))
     print()
 
@@ -211,7 +220,12 @@ def run_interactive(url: str | None, dest: Path | None, profile: Profile | None)
 
     # go --------------------------------------------------------------------
     hooks = ConsoleHooks()
-    engine = Engine(profile, hooks=hooks)
+    engine = Engine(
+        profile,
+        ffmpeg_path=info["ffmpeg"],
+        js_runtimes=info["js"],
+        hooks=hooks,
+    )
     try:
         report: Report = engine.run(url, dest)
     except KeyboardInterrupt:
@@ -325,13 +339,18 @@ def main(argv: list[str] | None = None) -> int:
     dest = args.dest or default_dest()
     profile = profile_from_args(args)
     try:
-        ensure_all(label=lambda m: print(f"  {m}", file=sys.stderr))
+        info = ensure_all(label=lambda m: print(f"  {m}", file=sys.stderr))
     except DependencyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
     hooks = ConsoleHooks()
-    engine = Engine(profile, hooks=hooks)
+    engine = Engine(
+        profile,
+        ffmpeg_path=info["ffmpeg"],
+        js_runtimes=info["js"],
+        hooks=hooks,
+    )
     try:
         report = engine.run(args.url, dest)
     except KeyboardInterrupt:

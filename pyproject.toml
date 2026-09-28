@@ -14,6 +14,7 @@ keywords = ["youtube", "yt-dlp", "playlist", "audio", "downloader"]
 dependencies = [
     "yt-dlp>=2024.4.9",
     "customtkinter>=5.2.0",
+    "mutagen>=1.47",
 ]
 
 [project.optional-dependencies]

@@ -144,14 +144,15 @@ def ensure_ffmpeg(label: ProgressCb | None = None, interactive: bool = True) -> 
 
 
 def ensure_all(label: ProgressCb | None = None) -> dict:
-    """Verify everything the engine needs. Returns {yt_dlp, ffmpeg} info."""
+    """Verify everything the engine needs. Returns {yt_dlp, ffmpeg, js} info."""
     if not has_yt_dlp():
         raise DependencyError(
             "yt-dlp is not installed.\n"
             "Run:  pip install -U yt-dlp   (or reinstall list2audio)"
         )
     ffmpeg = ensure_ffmpeg(label=label)
-    return {"yt_dlp": yt_dlp_version(), "ffmpeg": str(ffmpeg)}
+    js = ensure_js_runtime(label=label)
+    return {"yt_dlp": yt_dlp_version(), "ffmpeg": str(ffmpeg), "js": js}
 
 
 def self_update_yt_dlp(label: ProgressCb | None = None) -> bool:
@@ -166,6 +167,78 @@ def self_update_yt_dlp(label: ProgressCb | None = None) -> bool:
         return True
     except Exception:
         return False
+
+
+# --------------------------- JavaScript runtime ------------------------------
+# yt-dlp requires a JS runtime for YouTube (signature solving). It enables only
+# deno by default; node/bun/quickjs must be enabled explicitly.
+
+# candidate exe -> yt-dlp js_runtimes key (node preferred: most common)
+_JS_CANDIDATES = {"deno": "deno", "node": "node", "bun": "bun", "qjs": "quickjs"}
+
+
+def find_js_runtime() -> dict:
+    """Return a yt-dlp ``js_runtimes`` config for the first runtime on PATH."""
+    for exe, key in _JS_CANDIDATES.items():
+        if shutil.which(exe):
+            return {key: {}}
+    return {}
+
+
+def _download_zip(url: str, dest: Path, label: ProgressCb | None = None) -> None:
+    if label:
+        label(f"Downloading {url.rsplit('/', 1)[-1]} ...")
+    urllib.request.urlretrieve(url, dest)
+
+
+def ensure_js_runtime(label: ProgressCb | None = None) -> dict:
+    """Return a usable yt-dlp ``js_runtimes`` config (auto-downloads deno on
+    Windows when nothing is installed). Empty dict == none found (non-fatal).
+    """
+    found = find_js_runtime()
+    if found:
+        name = next(iter(found))
+        if label:
+            label(f"JavaScript runtime: {name}")
+        return found
+
+    if is_windows():
+        exe = "deno.exe"
+        target = cache_dir() / "deno"
+        dest = target / exe
+        if dest.is_file():
+            if label:
+                label("JavaScript runtime: deno (cached)")
+            return {"deno": {"path": str(dest)}}
+        url = (
+            "https://github.com/denoland/deno/releases/latest/download/"
+            "deno-x86_64-pc-windows-msvc.zip"
+        )
+        zip_path = cache_dir() / "deno.zip"
+        try:
+            _download_zip(url, zip_path, label)
+            if label:
+                label("Extracting deno...")
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(target)
+            zip_path.unlink(missing_ok=True)
+        except Exception as exc:
+            if label:
+                label(f"deno download failed ({exc})")
+        else:
+            if dest.is_file():
+                if label:
+                    label("JavaScript runtime: deno ready.")
+                return {"deno": {"path": str(dest)}}
+
+    # non-Windows (or download failed): warn only -- the user may install
+    # node/deno themselves; without a runtime some YouTube formats are missing
+    if label:
+        label(
+            "WARNING: no JS runtime (deno/node/bun) found; "
+            "YouTube downloads may fail. Install deno or node."
+        )
+    return {}
 
 
 if __name__ == "__main__":  # pragma: no cover

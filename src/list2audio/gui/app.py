@@ -336,12 +336,24 @@ class App(ctk.CTk):
                 self.queue.put(("log", "Checking dependencies..."))
                 info = ensure_all(label=lambda m: self.queue.put(("log", f"  {m}")))
                 self.queue.put(("log", f"  yt-dlp {info['yt_dlp']}, ffmpeg OK"))
+                js_label = next(iter(info.get("js") or {}), None)
+                if js_label:
+                    self.queue.put(("log", f"  JavaScript runtime: {js_label}"))
+                else:
+                    self.queue.put(
+                        (
+                            "log",
+                            "  WARNING: no JS runtime (deno/node) found; "
+                            "YouTube downloads may fail.",
+                        )
+                    )
                 self_update_yt_dlp(label=lambda m: self.queue.put(("log", f"  {m}")))
 
                 hooks = _QueueHooks(self.queue)
                 engine = Engine(
                     profile,
                     ffmpeg_path=info["ffmpeg"],
+                    js_runtimes=info["js"],
                     hooks=hooks,
                     cancel=self.cancel_token,
                 )
