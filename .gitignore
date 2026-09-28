@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# PyInstaller
+*.manifest
+# pero sí conservamos el spec
+!packaging/*.spec
+
+# Artefactos locales de prueba
+out/
+test_output/
+gui_screenshot.png
+*.jpg
+*.part
+*.ytdl
+
+# SO
+Thumbs.db
+.DS_Store

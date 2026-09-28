@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+
+      - name: Tests
+        run: pytest -q
+
+      - name: Build exe
+        run: pyinstaller packaging/list2audio.spec --noconfirm
+
+      - name: Smoke test exe
+        run: dist\list2audio.exe --version
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: list2audio-windows
+          path: dist/*.exe
+
+  publish:
+    needs: build-windows-exe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: list2audio-windows
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          generate_release_notes: true

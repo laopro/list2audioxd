@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "list2audio"
+version = "2.0.0"
+description = "Download YouTube / YouTube Music playlists as audio files. GUI + CLI."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "laopro" }]
+keywords = ["youtube", "yt-dlp", "playlist", "audio", "downloader"]
+dependencies = [
+    "yt-dlp>=2024.4.9",
+    "customtkinter>=5.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "pyinstaller>=6.0",
+]
+
+[project.scripts]
+list2audio = "list2audio.cli:main"
+list2audio-gui = "list2audio.gui.app:main"
+
+[project.urls]
+Homepage = "https://github.com/laopro/list2audioxd"
+Issues = "https://github.com/laopro/list2audioxd/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]
