@@ -480,7 +480,13 @@ class _QueueHooks:
         self.q.put(("log", message))
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    import sys
+
+    args = sys.argv[1:] if argv is None else argv
+    if "--version" in args or "-V" in args:
+        print(f"list2audio {__version__}")
+        return 0
     app = App()
     app.mainloop()
     return 0

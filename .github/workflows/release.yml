@@ -29,11 +29,16 @@ jobs:
       - name: Smoke test exe
         run: dist\list2audio.exe --version
 
+      - name: Build single-file .py (zipapp)
+        run: python packaging/build_zipapp.py
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: list2audio-windows
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/*.py
 
   publish:
     needs: build-windows-exe
@@ -47,5 +52,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*.exe
+          files: |
+            dist/*.exe
+            dist/*.py
           generate_release_notes: true

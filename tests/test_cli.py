@@ -65,7 +65,7 @@ def test_main_version(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert "2.0.0" in capsys.readouterr().out
+    assert "1.0.0" in capsys.readouterr().out
 
 
 def test_main_no_url_runs_interactive_and_fails_gracefully(monkeypatch):

@@ -13,4 +13,9 @@ pyinstaller packaging/list2audio.spec --noconfirm
 if ($LASTEXITCODE -ne 0) { throw "build failed" }
 
 dist\list2audio.exe --version
+if ($LASTEXITCODE -ne 0) { throw "exe smoke test failed" }
+
+python packaging/build_zipapp.py
+if ($LASTEXITCODE -ne 0) { throw "zipapp build failed" }
+
 Write-Host "OK: dist\list2audio.exe" -ForegroundColor Green
